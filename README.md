@@ -118,6 +118,7 @@ npm start
 - LLM API 後端代理，可切 OpenAI / Google Gemini / OpenRouter / Groq
 - LLM 失敗時的本機模擬回覆備援
 - 回聲情緒回顧
+- 回聲會依最近多則樹洞內容動態調整文字與情緒條
 - 時間膠囊新增與列表
 - 記憶列表與「從最近對話生成」流程
 - localStorage 本機保存

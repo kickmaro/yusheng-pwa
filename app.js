@@ -659,7 +659,7 @@ function renderEcho() {
     return;
   }
 
-  const mood = detectMood(userMessages.at(-1)?.content || "");
+  const mood = detectEchoMood(userMessages);
   elements.primaryMood.textContent = mood.primary;
   elements.weeklyReflection.textContent = mood.reflection;
   elements.moodBars.innerHTML = mood.bars
@@ -802,38 +802,80 @@ function createLongTermMemory(text) {
   };
 }
 
-function detectMood(text) {
-  if (text.includes("睡") || text.includes("累") || text.includes("撐")) {
-    return {
-      primary: "疲憊",
-      reflection: "這週的你，似乎一直在撐著。餘聲看見你把很多重量放在心裡，也會慢慢幫你整理哪些事反覆出現。",
-      bars: [
-        { label: "疲憊", value: 78 },
-        { label: "焦慮", value: 54 },
-        { label: "平靜", value: 28 }
-      ]
-    };
-  }
-  if (text.includes("怕") || text.includes("焦慮")) {
-    return {
-      primary: "焦慮",
-      reflection: "最近的焦慮像是從幾個細小縫隙冒出來，不一定巨大，卻一直消耗你。",
-      bars: [
-        { label: "焦慮", value: 72 },
-        { label: "疲憊", value: 49 },
-        { label: "平靜", value: 24 }
-      ]
-    };
-  }
+function detectEchoMood(userMessages) {
+  const recentMessages = userMessages.slice(-12);
+  const recentText = recentMessages.map((message) => message.content || "").join(" ");
+  const attachmentCount = recentMessages.reduce((count, message) => count + (message.attachments?.length || 0), 0);
+  const scores = [
+    {
+      label: "疲憊",
+      value: scoreKeywords(recentText, ["累", "疲", "撐", "厭世", "空", "麻木", "不想動", "好煩"]) + attachmentCount
+    },
+    {
+      label: "焦慮",
+      value: scoreKeywords(recentText, ["焦慮", "怕", "不安", "緊張", "擔心", "慌", "睡不著", "失眠"])
+    },
+    {
+      label: "難堪",
+      value: scoreKeywords(recentText, ["丟臉", "尷尬", "狼狽", "變態", "羞", "躲", "翻滾", "教練"])
+    },
+    {
+      label: "人際",
+      value: scoreKeywords(recentText, ["主管", "同事", "朋友", "家人", "教練", "他", "她", "關係", "喜歡", "在意"])
+    },
+    {
+      label: "平靜",
+      value: scoreKeywords(recentText, ["還好", "平靜", "舒服", "放鬆", "好一點", "沒事", "謝謝"])
+    }
+  ].map((item) => ({
+    ...item,
+    value: Math.min(95, Math.max(item.label === "平靜" ? 18 : 22, 18 + item.value * 14))
+  }));
+
+  const dominant = scores
+    .slice()
+    .sort((a, b) => b.value - a.value)[0];
+  const secondary = scores
+    .filter((item) => item.label !== dominant.label)
+    .sort((a, b) => b.value - a.value)[0];
+  const quote = getEchoQuote(recentMessages);
+
   return {
-    primary: "安靜",
-    reflection: "這週留下的內容不多，但它們都有重量。你不用把每件事說完整，餘聲會先陪你把片段放好。",
-    bars: [
-      { label: "平靜", value: 62 },
-      { label: "疲憊", value: 38 },
-      { label: "焦慮", value: 31 }
-    ]
+    primary: dominant.label,
+    reflection: createEchoReflection(dominant.label, secondary.label, recentMessages.length, attachmentCount, quote),
+    bars: scores
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 3)
   };
+}
+
+function scoreKeywords(text, keywords) {
+  return keywords.reduce((score, keyword) => score + (text.includes(keyword) ? 1 : 0), 0);
+}
+
+function getEchoQuote(messages) {
+  const latestText = [...messages].reverse().find((message) => message.content?.trim())?.content.trim() || "";
+  return latestText ? shortenText(latestText, 28) : "";
+}
+
+function createEchoReflection(primary, secondary, count, attachmentCount, quote) {
+  const quoteText = quote ? `像「${quote}」這樣的句子，` : "";
+  const mediaText = attachmentCount > 0 ? "你也用了照片或聲音把一些不容易說完的東西留下來。" : "";
+  const countText = count > 1 ? `最近 ${count} 段樹洞裡，` : "這段樹洞裡，";
+
+  const reflections = {
+    疲憊: `${countText}${quoteText}反覆出現的是一種「已經撐很久」的感覺。餘聲看見的不是你太脆弱，而是你可能一直在把自己放到最後。${mediaText}`,
+    焦慮: `${countText}${quoteText}比較明顯的是不安和預想很多結果的壓力。它不一定很大聲，但像背景音一樣一直耗著你。${mediaText}`,
+    難堪: `${countText}${quoteText}最卡住的像是被看見狼狽、失控或不夠好的那一刻。這種難堪會反覆回放，不代表你小題大作。${mediaText}`,
+    人際: `${countText}${quoteText}情緒常被某個人、某段關係或某個眼神牽動。餘聲會先把這些線索收好，不急著替你下結論。${mediaText}`,
+    平靜: `${countText}${quoteText}有一些比較能喘氣的片刻。這不是叫你立刻變好，而是提醒你：你也有慢慢回到自己身上的時候。${mediaText}`
+  };
+
+  if (primary !== secondary && secondary) {
+    return `${reflections[primary]} 旁邊也混著一點${secondary}，所以它不是單一情緒，而是一團需要慢慢拆開的東西。`;
+  }
+
+  return reflections[primary];
 }
 
 function resizeComposer() {
