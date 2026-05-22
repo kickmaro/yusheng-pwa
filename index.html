@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#07090b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="餘聲" />
+    <title>餘聲</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell" id="app">
+      <section class="lock-screen" id="lockScreen" aria-labelledby="lockTitle">
+        <div class="lock-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M7 10V8a5 5 0 0 1 10 0v2" />
+            <rect x="5" y="10" width="14" height="10" rx="3" />
+            <path d="M12 14v2" />
+          </svg>
+        </div>
+        <h1 id="lockTitle">餘聲</h1>
+        <p>有些話，說不出口。<br />但它們從未真正消失。</p>
+        <form class="pin-form" id="pinForm">
+          <label for="pinInput">輸入私密密碼</label>
+          <input id="pinInput" inputmode="numeric" type="password" maxlength="6" autocomplete="off" placeholder="4-6 位數字" />
+          <button type="submit">進入</button>
+        </form>
+        <button class="ghost-button" id="resetPinButton" type="button">重設本機資料</button>
+      </section>
+
+      <main class="phone-frame is-hidden" id="mainApp">
+        <header class="top-bar">
+          <div>
+            <p class="date-line" id="todayLine"></p>
+            <h1>餘聲</h1>
+          </div>
+          <button class="icon-button" id="lockButton" type="button" aria-label="鎖定">
+            <svg viewBox="0 0 24 24">
+              <path d="M7 10V8a5 5 0 0 1 10 0v2" />
+              <rect x="5" y="10" width="14" height="10" rx="3" />
+            </svg>
+          </button>
+        </header>
+
+        <section class="screen active" data-screen="hollow" aria-label="樹洞">
+          <div class="hollow-intro">
+            <p>今天有什麼話，是你還沒能說出口的？</p>
+          </div>
+          <div class="chat-list" id="chatList"></div>
+          <form class="composer" id="messageForm">
+            <textarea id="messageInput" rows="1" placeholder="把話留在這裡..."></textarea>
+            <button class="send-button" type="submit" aria-label="送出">
+              <svg viewBox="0 0 24 24">
+                <path d="m5 12 14-7-5 14-3-6-6-1Z" />
+              </svg>
+            </button>
+          </form>
+        </section>
+
+        <section class="screen" data-screen="echo" aria-label="回聲">
+          <div class="section-head">
+            <h2>回聲</h2>
+            <p>從樹洞裡慢慢整理出最近留下的情緒痕跡。</p>
+          </div>
+          <div class="mood-panel">
+            <div>
+              <span>本週主要情緒</span>
+              <strong id="primaryMood">尚未產生</strong>
+            </div>
+            <div class="mood-bars" id="moodBars"></div>
+          </div>
+          <article class="reflection">
+            <h3>週回顧</h3>
+            <p id="weeklyReflection">留下第一段樹洞對話後，餘聲會從那些話裡整理回聲。</p>
+          </article>
+        </section>
+
+        <section class="screen" data-screen="capsules" aria-label="膠囊">
+          <div class="section-head with-action">
+            <div>
+              <h2>膠囊</h2>
+              <p>把一句話留給未來的自己。</p>
+            </div>
+            <button class="small-button" id="newCapsuleButton" type="button">新增</button>
+          </div>
+          <form class="capsule-form is-hidden" id="capsuleForm">
+            <input id="capsuleTitle" maxlength="24" placeholder="標題" />
+            <textarea id="capsuleContent" rows="4" placeholder="未來打開時，你想看見什麼？"></textarea>
+            <input id="capsuleDate" type="date" />
+            <button type="submit">封存</button>
+          </form>
+          <div class="item-list" id="capsuleList"></div>
+        </section>
+
+        <section class="screen" data-screen="memories" aria-label="記憶">
+          <div class="section-head">
+            <h2>記憶</h2>
+            <p>只有你允許保存的片段，才會留在這裡。</p>
+          </div>
+          <div class="memory-controls">
+            <button class="small-button" id="createMemoryButton" type="button">允許記住最近片段</button>
+          </div>
+          <div class="item-list" id="memoryList"></div>
+        </section>
+
+        <nav class="tab-bar" aria-label="主要導覽">
+          <button class="tab active" data-tab="hollow" type="button">
+            <svg viewBox="0 0 24 24"><path d="M4 11a8 8 0 0 1 16 0c0 5-8 10-8 10S4 16 4 11Z" /><path d="M9 11h6" /></svg>
+            <span>樹洞</span>
+          </button>
+          <button class="tab" data-tab="echo" type="button">
+            <svg viewBox="0 0 24 24"><path d="M4 13c3-7 13-7 16 0" /><path d="M7 15c2-4 8-4 10 0" /><path d="M10 17c1-1 3-1 4 0" /></svg>
+            <span>回聲</span>
+          </button>
+          <button class="tab" data-tab="capsules" type="button">
+            <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="7" /><path d="M5 12h14" /></svg>
+            <span>膠囊</span>
+          </button>
+          <button class="tab" data-tab="memories" type="button">
+            <svg viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v14l-7-3-7 3V6a2 2 0 0 1 2-2Z" /></svg>
+            <span>記憶</span>
+          </button>
+        </nav>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

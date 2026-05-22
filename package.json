@@ -1,0 +1,12 @@
+{
+  "name": "yusheng-pwa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "餘聲 PWA prototype with a server-side LLM proxy.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

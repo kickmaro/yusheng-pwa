@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: yusheng-pwa
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: "npm start"
+    healthCheckPath: "/health"
+    envVars:
+      - key: LLM_PROVIDER
+        value: google
+      - key: GOOGLE_MODEL
+        value: gemini-2.5-flash
+      - key: GOOGLE_API_KEY
+        sync: false

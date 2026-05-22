@@ -1,0 +1,19 @@
+{
+  "name": "餘聲",
+  "short_name": "餘聲",
+  "description": "AI 私密情緒空間",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07090b",
+  "theme_color": "#07090b",
+  "lang": "zh-Hant",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
