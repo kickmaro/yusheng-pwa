@@ -1,4 +1,4 @@
-const cacheName = "yusheng-pwa-v7";
+const cacheName = "yusheng-pwa-v8";
 const assets = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon.svg", "assets/tree-hollow-cover.png"];
 
 self.addEventListener("install", (event) => {

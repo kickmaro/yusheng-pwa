@@ -45,6 +45,7 @@ const elements = {
   primaryMood: document.querySelector("#primaryMood"),
   moodBars: document.querySelector("#moodBars"),
   weeklyReflection: document.querySelector("#weeklyReflection"),
+  echoMediaList: document.querySelector("#echoMediaList"),
   newCapsuleButton: document.querySelector("#newCapsuleButton"),
   capsuleForm: document.querySelector("#capsuleForm"),
   capsuleTitle: document.querySelector("#capsuleTitle"),
@@ -645,6 +646,8 @@ function renderMessages() {
 
 function renderEcho() {
   const userMessages = state.messages.filter((message) => message.role === "user");
+  renderEchoMedia(userMessages);
+
   if (userMessages.length === 0) {
     elements.primaryMood.textContent = "尚未產生";
     elements.weeklyReflection.textContent = "留下第一段樹洞對話後，餘聲會從那些話裡整理回聲。現在這裡先保持空白，不替你預設任何情緒。";
@@ -668,6 +671,49 @@ function renderEcho() {
       </div>
     `)
     .join("");
+}
+
+function renderEchoMedia(userMessages) {
+  const mediaItems = userMessages.flatMap((message) =>
+    (message.attachments || []).map((attachment) => ({
+      ...attachment,
+      messageText: message.content,
+      createdAt: message.createdAt
+    }))
+  );
+
+  if (mediaItems.length === 0) {
+    elements.echoMediaList.innerHTML = `
+      <article class="echo-media-empty">
+        <p>還沒有照片或錄音。之後你在樹洞留下的片段，會在這裡慢慢收好。</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.echoMediaList.innerHTML = mediaItems
+    .slice()
+    .reverse()
+    .map((item) => renderEchoMediaItem(item))
+    .join("");
+}
+
+function renderEchoMediaItem(item) {
+  const note = item.messageText ? `<p>${escapeHtml(shortenText(item.messageText, 42))}</p>` : "";
+  const label = item.type === "image" ? "照片" : `錄音 ${formatDuration(item.duration || 0)}`;
+  const media = item.type === "image"
+    ? `<a href="${item.dataUrl}" target="_blank" rel="noreferrer"><img src="${item.dataUrl}" alt="${escapeHtml(item.name || "照片")}" /></a>`
+    : `<audio controls src="${item.dataUrl}"></audio>`;
+
+  return `
+    <article class="echo-media-item ${item.type}">
+      ${media}
+      <div>
+        <span>${label} · ${formatDate(item.createdAt)}</span>
+        ${note}
+      </div>
+    </article>
+  `;
 }
 
 function renderCapsules() {
@@ -842,6 +888,10 @@ function formatDate(value) {
     month: "2-digit",
     day: "2-digit"
   }).format(new Date(value));
+}
+
+function shortenText(value, length) {
+  return value.length > length ? `${value.slice(0, length)}...` : value;
 }
 
 function escapeHtml(value) {
