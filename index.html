@@ -52,7 +52,25 @@
           </div>
           <div class="chat-list" id="chatList"></div>
           <form class="composer" id="messageForm">
+            <div class="attachment-tray" id="attachmentTray"></div>
             <textarea id="messageInput" rows="1" placeholder="把話留在這裡..."></textarea>
+            <div class="composer-tools">
+              <button class="tool-button" id="attachPhotoButton" type="button" aria-label="加入照片">
+                <svg viewBox="0 0 24 24">
+                  <rect x="4" y="5" width="16" height="14" rx="3" />
+                  <path d="m8 15 3-3 2 2 2-3 3 4" />
+                  <circle cx="9" cy="9" r="1.2" />
+                </svg>
+              </button>
+              <button class="tool-button" id="recordButton" type="button" aria-label="錄音">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" />
+                  <path d="M5 11a7 7 0 0 0 14 0" />
+                  <path d="M12 18v3" />
+                </svg>
+              </button>
+            </div>
+            <input class="hidden-file-input" id="photoInput" type="file" accept="image/*" />
             <button class="send-button" type="submit" aria-label="送出">
               <svg viewBox="0 0 24 24">
                 <path d="m5 12 14-7-5 14-3-6-6-1Z" />

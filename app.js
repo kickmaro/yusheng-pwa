@@ -21,6 +21,11 @@ const seedState = {
 
 let state = loadState();
 removeOldSeedData();
+let pendingAttachments = [];
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStartedAt = 0;
+let recordingStream = null;
 
 const elements = {
   lockScreen: document.querySelector("#lockScreen"),
@@ -33,6 +38,10 @@ const elements = {
   chatList: document.querySelector("#chatList"),
   messageForm: document.querySelector("#messageForm"),
   messageInput: document.querySelector("#messageInput"),
+  attachmentTray: document.querySelector("#attachmentTray"),
+  attachPhotoButton: document.querySelector("#attachPhotoButton"),
+  photoInput: document.querySelector("#photoInput"),
+  recordButton: document.querySelector("#recordButton"),
   primaryMood: document.querySelector("#primaryMood"),
   moodBars: document.querySelector("#moodBars"),
   weeklyReflection: document.querySelector("#weeklyReflection"),
@@ -74,6 +83,9 @@ function bindEvents() {
   elements.lockButton.addEventListener("click", showLock);
   elements.messageForm.addEventListener("submit", handleMessageSubmit);
   elements.messageInput.addEventListener("input", resizeComposer);
+  elements.attachPhotoButton.addEventListener("click", () => elements.photoInput.click());
+  elements.photoInput.addEventListener("change", handlePhotoSelected);
+  elements.recordButton.addEventListener("click", toggleRecording);
   elements.newCapsuleButton.addEventListener("click", () => elements.capsuleForm.classList.toggle("is-hidden"));
   elements.capsuleForm.addEventListener("submit", handleCapsuleSubmit);
   elements.createMemoryButton.addEventListener("click", createMemoryFromLatest);
@@ -135,15 +147,24 @@ function resetLocalData() {
 async function handleMessageSubmit(event) {
   event.preventDefault();
   const content = elements.messageInput.value.trim();
-  if (!content) return;
+  if (mediaRecorder?.state === "recording") {
+    alert("請先停止錄音，再把這段話留在樹洞裡。");
+    return;
+  }
+  if (!content && pendingAttachments.length === 0) return;
 
   elements.messageInput.value = "";
+  const attachments = pendingAttachments;
+  pendingAttachments = [];
+  renderAttachmentTray();
   setComposerBusy(true);
 
+  const aiContent = buildAiContent(content, attachments);
   state.messages.push({
     id: crypto.randomUUID(),
     role: "user",
     content,
+    attachments,
     createdAt: new Date().toISOString()
   });
 
@@ -151,7 +172,7 @@ async function handleMessageSubmit(event) {
   render();
   elements.chatList.scrollTop = elements.chatList.scrollHeight;
 
-  const response = await createAiResponse(content, state.messages);
+  const response = await createAiResponse(aiContent, state.messages);
   state.messages.push({
     id: crypto.randomUUID(),
     role: "ai",
@@ -167,13 +188,14 @@ async function handleMessageSubmit(event) {
 
 async function createAiResponse(content, messages) {
   try {
+    const recentMessages = messages.slice(-24);
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        messages: messages.slice(-24).map((message) => ({
+        messages: recentMessages.map((message, index) => ({
           role: message.role,
-          content: message.content
+          content: index === recentMessages.length - 1 && message.role === "user" ? content : message.content
         }))
       })
     });
@@ -334,8 +356,185 @@ function createLocalResponse(content, messages) {
 function setComposerBusy(isBusy) {
   elements.messageInput.disabled = isBusy;
   elements.messageForm.querySelector(".send-button").disabled = isBusy;
+  elements.attachPhotoButton.disabled = isBusy;
+  elements.recordButton.disabled = isBusy;
   elements.messageInput.placeholder = isBusy ? "餘聲正在聽..." : "把話留在這裡...";
   if (!isBusy) resizeComposer();
+}
+
+async function handlePhotoSelected(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  try {
+    const attachment = await createImageAttachment(file);
+    pendingAttachments.push(attachment);
+    renderAttachmentTray();
+  } catch {
+    alert("這張照片暫時無法加入，請換一張試試。");
+  }
+}
+
+async function toggleRecording() {
+  if (mediaRecorder?.state === "recording") {
+    await stopRecording();
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    alert("這個瀏覽器暫時不支援錄音。");
+    return;
+  }
+
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    recordingStartedAt = Date.now();
+    mediaRecorder = new MediaRecorder(recordingStream, getAudioRecorderOptions());
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) recordedChunks.push(event.data);
+    });
+    mediaRecorder.addEventListener("stop", handleRecordingStopped);
+    mediaRecorder.start();
+    elements.recordButton.classList.add("is-recording");
+    elements.recordButton.setAttribute("aria-label", "停止錄音");
+  } catch {
+    alert("無法開啟麥克風。請確認瀏覽器已允許錄音權限。");
+  }
+}
+
+function stopRecording() {
+  return new Promise((resolve) => {
+    if (!mediaRecorder || mediaRecorder.state !== "recording") {
+      resolve();
+      return;
+    }
+
+    mediaRecorder.addEventListener("stop", resolve, { once: true });
+    mediaRecorder.stop();
+  });
+}
+
+async function handleRecordingStopped() {
+  const mimeType = mediaRecorder.mimeType || "audio/webm";
+  const blob = new Blob(recordedChunks, { type: mimeType });
+  const duration = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
+
+  pendingAttachments.push({
+    id: crypto.randomUUID(),
+    type: "audio",
+    mimeType,
+    name: `錄音 ${formatDuration(duration)}`,
+    duration,
+    dataUrl: await blobToDataUrl(blob)
+  });
+
+  recordingStream?.getTracks().forEach((track) => track.stop());
+  recordingStream = null;
+  mediaRecorder = null;
+  recordedChunks = [];
+  recordingStartedAt = 0;
+  elements.recordButton.classList.remove("is-recording");
+  elements.recordButton.setAttribute("aria-label", "錄音");
+  renderAttachmentTray();
+}
+
+function getAudioRecorderOptions() {
+  const candidates = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+  const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+  return mimeType ? { mimeType } : {};
+}
+
+function renderAttachmentTray() {
+  elements.attachmentTray.innerHTML = pendingAttachments
+    .map((attachment) => renderAttachmentPreview(attachment, true))
+    .join("");
+  elements.attachmentTray.classList.toggle("is-empty", pendingAttachments.length === 0);
+
+  elements.attachmentTray.querySelectorAll("[data-remove-attachment]").forEach((button) => {
+    button.addEventListener("click", () => {
+      pendingAttachments = pendingAttachments.filter((attachment) => attachment.id !== button.dataset.removeAttachment);
+      renderAttachmentTray();
+    });
+  });
+}
+
+function renderAttachmentPreview(attachment, removable = false) {
+  const removeButton = removable
+    ? `<button class="remove-attachment" type="button" data-remove-attachment="${attachment.id}" aria-label="移除附件">×</button>`
+    : "";
+
+  if (attachment.type === "image") {
+    return `
+      <figure class="attachment-preview photo-attachment">
+        <img src="${attachment.dataUrl}" alt="${escapeHtml(attachment.name || "照片")}" />
+        ${removeButton}
+      </figure>
+    `;
+  }
+
+  return `
+    <div class="attachment-preview audio-attachment">
+      <audio controls src="${attachment.dataUrl}"></audio>
+      <span>${escapeHtml(attachment.name || "錄音")}</span>
+      ${removeButton}
+    </div>
+  `;
+}
+
+async function createImageAttachment(file) {
+  const dataUrl = await resizeImageFile(file);
+  return {
+    id: crypto.randomUUID(),
+    type: "image",
+    mimeType: "image/jpeg",
+    name: file.name || "照片",
+    dataUrl
+  };
+}
+
+function resizeImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const maxSize = 1280;
+      const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(image.src);
+      resolve(canvas.toDataURL("image/jpeg", 0.78));
+    };
+    image.onerror = reject;
+    image.src = URL.createObjectURL(file);
+  });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function buildAiContent(content, attachments) {
+  const notes = attachments.map((attachment) => {
+    if (attachment.type === "image") return "使用者在這則樹洞裡留下了一張照片。你目前不需要解讀照片，只要溫柔承接他願意留下這個片段。";
+    return `使用者在這則樹洞裡留下了一段 ${formatDuration(attachment.duration || 0)} 的錄音。你目前不能聽見內容，只要承接他願意用聲音留下這件事。`;
+  });
+
+  return [content || "我留下了一個沒有文字的片段。", ...notes].join("\n");
+}
+
+function formatDuration(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const rest = String(seconds % 60).padStart(2, "0");
+  return `${minutes}:${rest}`;
 }
 
 function pickFreshReply(replies, recentReplies) {
@@ -432,9 +631,11 @@ function renderMessages() {
   elements.chatList.innerHTML = state.messages
     .map((message) => {
       const label = message.role === "user" ? "user" : "ai";
+      const attachments = (message.attachments || []).map((attachment) => renderAttachmentPreview(attachment)).join("");
       return `
         <article class="message ${label}">
-          ${escapeHtml(message.content)}
+          ${message.content ? `<div>${escapeHtml(message.content)}</div>` : ""}
+          ${attachments ? `<div class="message-attachments">${attachments}</div>` : ""}
           <time>${formatTime(message.createdAt)}</time>
         </article>
       `;

@@ -113,6 +113,7 @@ npm start
 - 本機密碼鎖
 - App 切到背景時自動回到鎖定畫面
 - 樹洞對話頁
+- 樹洞照片與錄音附件
 - LLM API 後端代理，可切 OpenAI / Google Gemini / OpenRouter / Groq
 - LLM 失敗時的本機模擬回覆備援
 - 回聲情緒回顧
