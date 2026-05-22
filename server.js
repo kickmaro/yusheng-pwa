@@ -7,7 +7,7 @@ loadDotEnv();
 
 const root = __dirname;
 const port = Number(process.env.PORT || 4174);
-const provider = (process.env.LLM_PROVIDER || "openai").toLowerCase();
+const provider = resolveProviderName();
 const providerConfig = getProviderConfig(provider);
 
 const mimeTypes = {
@@ -144,6 +144,14 @@ function getProviderConfig(providerName) {
     url: "https://api.openai.com/v1/responses",
     headers: {}
   };
+}
+
+function resolveProviderName() {
+  if (process.env.LLM_PROVIDER) return process.env.LLM_PROVIDER.toLowerCase();
+  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) return "google";
+  if (process.env.OPENROUTER_API_KEY) return "openrouter";
+  if (process.env.GROQ_API_KEY) return "groq";
+  return "openai";
 }
 
 async function callModel(config, messages) {
