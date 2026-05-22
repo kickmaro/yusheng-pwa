@@ -4,8 +4,8 @@
   "description": "AI 私密情緒空間",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#07090b",
-  "theme_color": "#07090b",
+  "background_color": "#efe8d7",
+  "theme_color": "#efe8d7",
   "lang": "zh-Hant",
   "orientation": "portrait",
   "icons": [

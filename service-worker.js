@@ -1,5 +1,5 @@
-const cacheName = "yusheng-pwa-v5";
-const assets = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon.svg"];
+const cacheName = "yusheng-pwa-v6";
+const assets = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon.svg", "assets/tree-hollow-cover.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(assets)));
