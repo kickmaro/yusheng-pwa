@@ -22,7 +22,106 @@ const seedState = {
 let state = loadState();
 removeOldSeedData();
 let pendingAttachments = [];
+let isAiTyping = false;
 let mediaRecorder = null;
+
+// ─── Attachment Store (IndexedDB) ─────────────────────────────────────────────
+const ATTACHMENT_DB_NAME = "yusheng-attachments-v1";
+const ATTACHMENT_STORE_NAME = "blobs";
+let _attachmentDb = null;
+const attachmentCache = new Map();
+
+function getAttachmentDb() {
+  if (_attachmentDb) return Promise.resolve(_attachmentDb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(ATTACHMENT_DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      e.target.result.createObjectStore(ATTACHMENT_STORE_NAME, { keyPath: "id" });
+    };
+    req.onsuccess = (e) => { _attachmentDb = e.target.result; resolve(_attachmentDb); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveAttachmentToDb(id, dataUrl) {
+  attachmentCache.set(id, dataUrl);
+  try {
+    const db = await getAttachmentDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(ATTACHMENT_STORE_NAME, "readwrite");
+      tx.objectStore(ATTACHMENT_STORE_NAME).put({ id, dataUrl });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn("IndexedDB write failed:", err);
+  }
+}
+
+async function deleteAttachmentFromDb(id) {
+  attachmentCache.delete(id);
+  try {
+    const db = await getAttachmentDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(ATTACHMENT_STORE_NAME, "readwrite");
+      tx.objectStore(ATTACHMENT_STORE_NAME).delete(id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn("IndexedDB delete failed:", err);
+  }
+}
+
+async function loadAllAttachments() {
+  try {
+    const db = await getAttachmentDb();
+    const items = await new Promise((resolve, reject) => {
+      const req = db.transaction(ATTACHMENT_STORE_NAME).objectStore(ATTACHMENT_STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    for (const item of items) attachmentCache.set(item.id, item.dataUrl);
+  } catch (err) {
+    console.warn("IndexedDB load failed:", err);
+  }
+}
+
+async function migrateEmbeddedAttachments() {
+  let changed = false;
+  for (const message of state.messages) {
+    for (const attachment of (message.attachments || [])) {
+      if (attachment.dataUrl) {
+        await saveAttachmentToDb(attachment.id, attachment.dataUrl);
+        delete attachment.dataUrl;
+        changed = true;
+      }
+    }
+  }
+  if (changed) saveState();
+}
+
+function getAttachmentUrl(id) {
+  return attachmentCache.get(id) ?? null;
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ─── PIN hashing ──────────────────────────────────────────────────────────────
+async function hashPin(pin) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function isPinHashed(value) {
+  return typeof value === "string" && value.length === 64 && /^[0-9a-f]+$/.test(value);
+}
+
+async function migratePin() {
+  const stored = localStorage.getItem(pinKey);
+  if (!stored || isPinHashed(stored)) return;
+  localStorage.setItem(pinKey, await hashPin(stored));
+}
+// ──────────────────────────────────────────────────────────────────────────────
 let recordedChunks = [];
 let recordingStartedAt = 0;
 let recordingStream = null;
@@ -58,7 +157,7 @@ const elements = {
 
 init();
 
-function init() {
+async function init() {
   elements.todayLine.textContent = new Intl.DateTimeFormat("zh-Hant-TW", {
     month: "long",
     day: "numeric",
@@ -66,6 +165,10 @@ function init() {
   }).format(new Date());
 
   elements.capsuleDate.min = new Date().toISOString().slice(0, 10);
+
+  await Promise.all([loadAllAttachments(), migratePin()]);
+  await migrateEmbeddedAttachments();
+
   bindEvents();
   render();
 
@@ -100,7 +203,7 @@ function bindEvents() {
   });
 }
 
-function handlePin(event) {
+async function handlePin(event) {
   event.preventDefault();
   const value = elements.pinInput.value.trim();
   if (!/^\d{4,6}$/.test(value)) {
@@ -110,13 +213,15 @@ function handlePin(event) {
   }
 
   const savedPin = localStorage.getItem(pinKey);
+  const inputHash = await hashPin(value);
+
   if (!savedPin) {
-    localStorage.setItem(pinKey, value);
+    localStorage.setItem(pinKey, inputHash);
     showApp();
     return;
   }
 
-  if (savedPin === value) {
+  if (savedPin === inputHash) {
     showApp();
   } else {
     elements.pinInput.value = "";
@@ -135,10 +240,22 @@ function showLock() {
   elements.lockScreen.classList.remove("is-hidden");
 }
 
-function resetLocalData() {
+async function resetLocalData() {
   if (!confirm("這會刪除餘聲保存在此裝置上的所有原型資料，確定嗎？")) return;
   localStorage.removeItem(storageKey);
   localStorage.removeItem(pinKey);
+  try {
+    const db = await getAttachmentDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(ATTACHMENT_STORE_NAME, "readwrite");
+      tx.objectStore(ATTACHMENT_STORE_NAME).clear();
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    attachmentCache.clear();
+  } catch (err) {
+    console.warn("IndexedDB clear failed:", err);
+  }
   state = structuredClone(seedState);
   saveState();
   render();
@@ -171,9 +288,12 @@ async function handleMessageSubmit(event) {
 
   saveState();
   render();
+  isAiTyping = true;
+  renderMessages();
   elements.chatList.scrollTop = elements.chatList.scrollHeight;
 
   const response = await createAiResponse(aiContent, state.messages);
+  isAiTyping = false;
   state.messages.push({
     id: crypto.randomUUID(),
     role: "ai",
@@ -197,7 +317,8 @@ async function createAiResponse(content, messages) {
         messages: recentMessages.map((message, index) => ({
           role: message.role,
           content: index === recentMessages.length - 1 && message.role === "user" ? content : message.content
-        }))
+        })),
+        memories: state.memories.slice(0, 6).map(m => `[${m.type}] ${m.title}：${m.summary}`)
       })
     });
 
@@ -421,15 +542,10 @@ async function handleRecordingStopped() {
   const mimeType = mediaRecorder.mimeType || "audio/webm";
   const blob = new Blob(recordedChunks, { type: mimeType });
   const duration = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
+  const id = crypto.randomUUID();
+  await saveAttachmentToDb(id, await blobToDataUrl(blob));
 
-  pendingAttachments.push({
-    id: crypto.randomUUID(),
-    type: "audio",
-    mimeType,
-    name: `錄音 ${formatDuration(duration)}`,
-    duration,
-    dataUrl: await blobToDataUrl(blob)
-  });
+  pendingAttachments.push({ id, type: "audio", mimeType, name: `錄音 ${formatDuration(duration)}`, duration });
 
   recordingStream?.getTracks().forEach((track) => track.stop());
   recordingStream = null;
@@ -465,11 +581,12 @@ function renderAttachmentPreview(attachment, removable = false) {
   const removeButton = removable
     ? `<button class="remove-attachment" type="button" data-remove-attachment="${attachment.id}" aria-label="移除附件">×</button>`
     : "";
+  const url = getAttachmentUrl(attachment.id) || "";
 
   if (attachment.type === "image") {
     return `
       <figure class="attachment-preview photo-attachment">
-        <img src="${attachment.dataUrl}" alt="${escapeHtml(attachment.name || "照片")}" />
+        <img src="${url}" alt="${escapeHtml(attachment.name || "照片")}" />
         ${removeButton}
       </figure>
     `;
@@ -477,7 +594,7 @@ function renderAttachmentPreview(attachment, removable = false) {
 
   return `
     <div class="attachment-preview audio-attachment">
-      <audio controls src="${attachment.dataUrl}"></audio>
+      <audio controls src="${url}"></audio>
       <span>${escapeHtml(attachment.name || "錄音")}</span>
       ${removeButton}
     </div>
@@ -486,13 +603,9 @@ function renderAttachmentPreview(attachment, removable = false) {
 
 async function createImageAttachment(file) {
   const dataUrl = await resizeImageFile(file);
-  return {
-    id: crypto.randomUUID(),
-    type: "image",
-    mimeType: "image/jpeg",
-    name: file.name || "照片",
-    dataUrl
-  };
+  const id = crypto.randomUUID();
+  await saveAttachmentToDb(id, dataUrl);
+  return { id, type: "image", mimeType: "image/jpeg", name: file.name || "照片" };
 }
 
 function resizeImageFile(file) {
@@ -629,7 +742,7 @@ function render() {
 }
 
 function renderMessages() {
-  elements.chatList.innerHTML = state.messages
+  let html = state.messages
     .map((message) => {
       const label = message.role === "user" ? "user" : "ai";
       const attachments = (message.attachments || []).map((attachment) => renderAttachmentPreview(attachment)).join("");
@@ -642,6 +755,12 @@ function renderMessages() {
       `;
     })
     .join("");
+
+  if (isAiTyping) {
+    html += `<article class="message ai"><div class="typing-dots"><span></span><span></span><span></span></div></article>`;
+  }
+
+  elements.chatList.innerHTML = html;
 }
 
 function renderEcho() {
@@ -701,9 +820,10 @@ function renderEchoMedia(userMessages) {
 function renderEchoMediaItem(item) {
   const note = item.messageText ? `<p>${escapeHtml(shortenText(item.messageText, 42))}</p>` : "";
   const label = item.type === "image" ? "照片" : `錄音 ${formatDuration(item.duration || 0)}`;
+  const url = getAttachmentUrl(item.id) || "";
   const media = item.type === "image"
-    ? `<a href="${item.dataUrl}" target="_blank" rel="noreferrer"><img src="${item.dataUrl}" alt="${escapeHtml(item.name || "照片")}" /></a>`
-    : `<audio controls src="${item.dataUrl}"></audio>`;
+    ? `<a href="${url}" target="_blank" rel="noreferrer"><img src="${url}" alt="${escapeHtml(item.name || "照片")}" /></a>`
+    : `<audio controls src="${url}"></audio>`;
 
   return `
     <article class="echo-media-item ${item.type}">
@@ -722,6 +842,7 @@ function renderCapsules() {
       const canOpen = new Date(capsule.openAt) <= new Date();
       return `
         <article class="item-card">
+          <button class="delete-item-btn" type="button" data-delete-capsule="${capsule.id}" aria-label="刪除膠囊">×</button>
           <h3>${escapeHtml(capsule.title)}</h3>
           <p>${canOpen ? escapeHtml(capsule.content) : "還沒到開啟時間。餘聲會先替你保管。"}</p>
           <div class="item-meta">
@@ -732,6 +853,15 @@ function renderCapsules() {
       `;
     })
     .join("");
+
+  elements.capsuleList.querySelectorAll("[data-delete-capsule]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!confirm("刪除這個膠囊？")) return;
+      state.capsules = state.capsules.filter(c => c.id !== btn.dataset.deleteCapsule);
+      saveState();
+      renderCapsules();
+    });
+  });
 }
 
 function renderMemories() {
@@ -748,6 +878,7 @@ function renderMemories() {
   elements.memoryList.innerHTML = state.memories
     .map((memory) => `
       <article class="item-card">
+        <button class="delete-item-btn" type="button" data-delete-memory="${memory.id}" aria-label="刪除記憶">×</button>
         <h3>${escapeHtml(memory.title)}</h3>
         <p>${escapeHtml(memory.summary)}</p>
         <div class="item-meta">
@@ -757,6 +888,15 @@ function renderMemories() {
       </article>
     `)
     .join("");
+
+  elements.memoryList.querySelectorAll("[data-delete-memory]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!confirm("移除這個記憶片段？")) return;
+      state.memories = state.memories.filter(m => m.id !== btn.dataset.deleteMemory);
+      saveState();
+      renderMemories();
+    });
+  });
 }
 
 function createLongTermMemory(text) {

@@ -23,6 +23,12 @@ const mimeTypes = {
   ".ico": "image/x-icon"
 };
 
+function buildInstructions(memories) {
+  if (!memories || memories.length === 0) return yushengInstructions;
+  const memSection = memories.map(m => `- ${m}`).join("\n");
+  return `${yushengInstructions}\n\n以下是使用者允許餘聲記住的片段，請在對話中自然融入這些線索，不要刻意唸出，而是讓它影響你的陪伴方式：\n${memSection}`;
+}
+
 const yushengInstructions = `
 你是「餘聲」，一個私密情緒空間裡的 AI 陪伴者。
 
@@ -86,7 +92,8 @@ async function handleChat(request, response) {
       return;
     }
 
-    const text = await callModel(providerConfig, messages);
+    const memories = normalizeMemories(body.memories);
+    const text = await callModel(providerConfig, messages, memories);
 
     sendJson(response, 200, { text });
   } catch (error) {
@@ -154,13 +161,13 @@ function resolveProviderName() {
   return "openai";
 }
 
-async function callModel(config, messages) {
-  if (config.type === "responses") return callResponsesApi(config, messages);
-  if (config.type === "gemini") return callGeminiApi(config, messages);
-  return callChatCompletionsApi(config, messages);
+async function callModel(config, messages, memories) {
+  if (config.type === "responses") return callResponsesApi(config, messages, memories);
+  if (config.type === "gemini") return callGeminiApi(config, messages, memories);
+  return callChatCompletionsApi(config, messages, memories);
 }
 
-async function callResponsesApi(config, messages) {
+async function callResponsesApi(config, messages, memories) {
   const apiResponse = await fetch(config.url, {
     method: "POST",
     headers: {
@@ -169,7 +176,7 @@ async function callResponsesApi(config, messages) {
     },
     body: JSON.stringify({
       model: config.model,
-      instructions: yushengInstructions,
+      instructions: buildInstructions(memories),
       input: messages.map((message) => ({
         role: message.role,
         content: message.content
@@ -187,7 +194,7 @@ async function callResponsesApi(config, messages) {
   return extractResponsesText(data);
 }
 
-async function callChatCompletionsApi(config, messages) {
+async function callChatCompletionsApi(config, messages, memories) {
   const apiResponse = await fetch(config.url, {
     method: "POST",
     headers: {
@@ -198,7 +205,7 @@ async function callChatCompletionsApi(config, messages) {
     body: JSON.stringify({
       model: config.model,
       messages: [
-        { role: "system", content: yushengInstructions },
+        { role: "system", content: buildInstructions(memories) },
         ...messages
       ],
       temperature: 0.82,
@@ -215,7 +222,7 @@ async function callChatCompletionsApi(config, messages) {
     "我在。剛剛那句我沒有接好，你可以再丟一次給我。";
 }
 
-async function callGeminiApi(config, messages) {
+async function callGeminiApi(config, messages, memories) {
   const apiResponse = await fetch(config.url, {
     method: "POST",
     headers: {
@@ -224,7 +231,7 @@ async function callGeminiApi(config, messages) {
     },
     body: JSON.stringify({
       systemInstruction: {
-        parts: [{ text: yushengInstructions }]
+        parts: [{ text: buildInstructions(memories) }]
       },
       contents: messages.map((message) => ({
         role: message.role === "assistant" ? "model" : "user",
@@ -249,6 +256,14 @@ async function callGeminiApi(config, messages) {
     ?.map((part) => part.text || "")
     .join("")
     .trim() || "我在。剛剛那句我沒有接好，你可以再丟一次給我。";
+}
+
+function normalizeMemories(memories) {
+  if (!Array.isArray(memories)) return [];
+  return memories
+    .slice(0, 8)
+    .map(m => String(m || "").trim())
+    .filter(m => m.length > 0);
 }
 
 function normalizeMessages(messages) {
