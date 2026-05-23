@@ -318,6 +318,10 @@ async function handleMessageSubmit(event) {
 }
 
 async function createAiResponse(content, messages) {
+  const warmupTimer = setTimeout(() => {
+    elements.messageInput.placeholder = "伺服器正在喚醒，請稍候…";
+  }, 5000);
+
   try {
     const recentMessages = messages.slice(-24);
     const response = await fetch("/api/chat", {
@@ -332,13 +336,20 @@ async function createAiResponse(content, messages) {
       })
     });
 
-    if (!response.ok) throw new Error("AI server unavailable");
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "AI server unavailable");
+    }
     const data = await response.json();
     if (!data.text) throw new Error("AI response is empty");
     return data.text.trim();
-  } catch {
+  } catch (err) {
+    if (err.message && err.message.includes("上限")) {
+      return `今天的使用次數到了，明天再繼續吧。你說的話我都有接到。`;
+    }
     return createLocalResponse(content, messages);
   } finally {
+    clearTimeout(warmupTimer);
     setComposerBusy(false);
   }
 }
