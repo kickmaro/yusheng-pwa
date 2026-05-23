@@ -30,6 +30,11 @@
         </form>
         <button class="ghost-button" id="resetPinButton" type="button">重設本機資料</button>
         <div class="cover-ornament" aria-hidden="true"><span></span><i></i><span></span></div>
+        <div class="lock-footer">
+          <a href="/privacy.html" target="_blank">隱私政策</a>
+          <span>·</span>
+          <a href="/terms.html" target="_blank">服務條款</a>
+        </div>
       </section>
 
       <main class="phone-frame is-hidden" id="mainApp">
@@ -38,12 +43,21 @@
             <p class="date-line" id="todayLine"></p>
             <h1>餘聲</h1>
           </div>
-          <button class="icon-button" id="lockButton" type="button" aria-label="鎖定">
-            <svg viewBox="0 0 24 24">
-              <path d="M7 10V8a5 5 0 0 1 10 0v2" />
-              <rect x="5" y="10" width="14" height="10" rx="3" />
-            </svg>
-          </button>
+          <div class="top-bar-actions">
+            <button class="icon-button" id="helpButton" type="button" aria-label="求助資源">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/>
+                <path d="M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3"/>
+                <path d="M12 17h.01"/>
+              </svg>
+            </button>
+            <button class="icon-button" id="lockButton" type="button" aria-label="鎖定">
+              <svg viewBox="0 0 24 24">
+                <path d="M7 10V8a5 5 0 0 1 10 0v2" />
+                <rect x="5" y="10" width="14" height="10" rx="3" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         <section class="screen active" data-screen="hollow" aria-label="樹洞">
@@ -128,6 +142,44 @@
           </div>
           <div class="item-list" id="memoryList"></div>
         </section>
+
+        <!-- 求助資源面板 -->
+        <div class="help-panel" id="helpPanel" role="dialog" aria-label="求助資源" aria-modal="true">
+          <div class="help-panel-sheet">
+            <div class="help-panel-handle" aria-hidden="true"></div>
+            <h2>需要更多支持嗎？</h2>
+            <p class="help-panel-desc">餘聲是陪伴空間，不是醫療服務。如果你現在非常不好受，以下有真實的人可以陪你。</p>
+            <div class="help-resources">
+              <a href="tel:1925" class="help-resource">
+                <div>
+                  <strong>安心專線</strong>
+                  <span>24 小時，免費撥打</span>
+                </div>
+                <span class="help-resource-number">1925</span>
+              </a>
+              <a href="tel:0800788995" class="help-resource">
+                <div>
+                  <strong>自殺防治專線</strong>
+                  <span>24 小時，免費撥打</span>
+                </div>
+                <span class="help-resource-number">0800-788-995</span>
+              </a>
+              <a href="tel:1980" class="help-resource">
+                <div>
+                  <strong>張老師專線</strong>
+                  <span>週一至週六 9:00–21:00</span>
+                </div>
+                <span class="help-resource-number">1980</span>
+              </a>
+            </div>
+            <div class="help-panel-links">
+              <a href="/privacy.html" target="_blank">隱私政策</a>
+              <span>·</span>
+              <a href="/terms.html" target="_blank">服務條款</a>
+            </div>
+            <button class="help-panel-close" id="helpPanelClose" type="button">關閉</button>
+          </div>
+        </div>
 
         <nav class="tab-bar" aria-label="主要導覽">
           <button class="tab active" data-tab="hollow" type="button">

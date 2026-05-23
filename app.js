@@ -152,7 +152,10 @@ const elements = {
   capsuleDate: document.querySelector("#capsuleDate"),
   capsuleList: document.querySelector("#capsuleList"),
   createMemoryButton: document.querySelector("#createMemoryButton"),
-  memoryList: document.querySelector("#memoryList")
+  memoryList: document.querySelector("#memoryList"),
+  helpButton: document.querySelector("#helpButton"),
+  helpPanel: document.querySelector("#helpPanel"),
+  helpPanelClose: document.querySelector("#helpPanelClose")
 };
 
 init();
@@ -198,6 +201,12 @@ function bindEvents() {
     tab.addEventListener("click", () => switchTab(tab.dataset.tab));
   });
 
+  elements.helpButton.addEventListener("click", () => elements.helpPanel.classList.add("active"));
+  elements.helpPanelClose.addEventListener("click", () => elements.helpPanel.classList.remove("active"));
+  elements.helpPanel.addEventListener("click", (e) => {
+    if (e.target === elements.helpPanel) elements.helpPanel.classList.remove("active");
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) showLock();
   });
@@ -236,6 +245,7 @@ function showApp() {
 }
 
 function showLock() {
+  elements.helpPanel.classList.remove("active");
   elements.mainApp.classList.add("is-hidden");
   elements.lockScreen.classList.remove("is-hidden");
 }

@@ -752,6 +752,165 @@ textarea:focus {
   background: rgba(154, 163, 125, 0.22);
 }
 
+/* ─── Top bar actions ──────────────────────────────────────────────────────── */
+.top-bar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ─── Lock screen footer ───────────────────────────────────────────────────── */
+.lock-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18px;
+  font-size: 12px;
+}
+
+.lock-footer a {
+  color: rgba(79, 81, 71, 0.64);
+  text-decoration: none;
+}
+
+.lock-footer span {
+  color: rgba(79, 81, 71, 0.36);
+}
+
+/* ─── Help panel (bottom sheet) ────────────────────────────────────────────── */
+.help-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(38, 34, 24, 0.48);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-end;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s;
+}
+
+.help-panel.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.help-panel-sheet {
+  width: 100%;
+  background: var(--bg-soft);
+  border-radius: 20px 20px 0 0;
+  padding: 6px 22px max(28px, env(safe-area-inset-bottom));
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.help-panel.active .help-panel-sheet {
+  transform: translateY(0);
+}
+
+.help-panel-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--line);
+  border-radius: 999px;
+  margin: 10px auto 20px;
+}
+
+.help-panel-sheet h2 {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: 20px;
+  letter-spacing: 0.04em;
+}
+
+.help-panel-desc {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.help-resources {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.help-resource {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 252, 241, 0.62);
+  text-decoration: none;
+  color: var(--text);
+  transition: background 0.15s;
+}
+
+.help-resource:active {
+  background: rgba(154, 163, 125, 0.22);
+}
+
+.help-resource div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.help-resource strong {
+  font-size: 15px;
+}
+
+.help-resource span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.help-resource-number {
+  font-family: var(--serif);
+  font-size: 20px !important;
+  font-weight: 600;
+  color: var(--accent-2) !important;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.help-panel-links {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.help-panel-links a {
+  color: var(--faint);
+  text-decoration: none;
+}
+
+.help-panel-links span {
+  opacity: 0.5;
+}
+
+.help-panel-close {
+  width: 100%;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgba(255, 252, 241, 0.5);
+  font-size: 15px;
+}
+
 /* ─── Typing indicator ─────────────────────────────────────────────────────── */
 .typing-dots {
   display: flex;

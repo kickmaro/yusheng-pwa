@@ -47,6 +47,40 @@ const yushengInstructions = `
 - 若使用者表達自傷、輕生或立即危險，先溫柔陪住，並鼓勵立刻聯絡身邊可信任的人或當地緊急服務。
 `.trim();
 
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+const RATE_PER_MINUTE = 20;
+const RATE_PER_DAY = 200;
+const rateLimitStore = new Map();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitStore) {
+    if (now > entry.dayResetAt) rateLimitStore.delete(ip);
+  }
+}, 3_600_000);
+
+function getClientIp(request) {
+  const forwarded = request.headers["x-forwarded-for"];
+  return forwarded ? forwarded.split(",")[0].trim() : (request.socket.remoteAddress || "unknown");
+}
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip) || {
+    minuteCount: 0, minuteResetAt: now + 60_000,
+    dayCount: 0, dayResetAt: now + 86_400_000
+  };
+  if (now > entry.minuteResetAt) { entry.minuteCount = 0; entry.minuteResetAt = now + 60_000; }
+  if (now > entry.dayResetAt) { entry.dayCount = 0; entry.dayResetAt = now + 86_400_000; }
+  entry.minuteCount++;
+  entry.dayCount++;
+  rateLimitStore.set(ip, entry);
+  if (entry.minuteCount > RATE_PER_MINUTE) return "請求過於頻繁，請稍後再試";
+  if (entry.dayCount > RATE_PER_DAY) return "今日使用次數已達上限，明天再來";
+  return null;
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 const server = http.createServer(async (request, response) => {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
 
@@ -82,6 +116,12 @@ async function handleChat(request, response) {
   try {
     if (!providerConfig.apiKey) {
       sendJson(response, 503, { error: `${providerConfig.keyName} is not configured` });
+      return;
+    }
+
+    const rateLimitError = checkRateLimit(getClientIp(request));
+    if (rateLimitError) {
+      sendJson(response, 429, { error: rateLimitError });
       return;
     }
 
