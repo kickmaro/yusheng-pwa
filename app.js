@@ -155,7 +155,11 @@ const elements = {
   memoryList: document.querySelector("#memoryList"),
   helpButton: document.querySelector("#helpButton"),
   helpPanel: document.querySelector("#helpPanel"),
-  helpPanelClose: document.querySelector("#helpPanelClose")
+  helpPanelClose: document.querySelector("#helpPanelClose"),
+  generateReflectionButton: document.querySelector("#generateReflectionButton"),
+  exportDataButton: document.querySelector("#exportDataButton"),
+  importDataButton: document.querySelector("#importDataButton"),
+  importFileInput: document.querySelector("#importFileInput")
 };
 
 init();
@@ -205,6 +209,15 @@ function bindEvents() {
   elements.helpPanelClose.addEventListener("click", () => elements.helpPanel.classList.remove("active"));
   elements.helpPanel.addEventListener("click", (e) => {
     if (e.target === elements.helpPanel) elements.helpPanel.classList.remove("active");
+  });
+
+  elements.generateReflectionButton.addEventListener("click", handleGenerateReflection);
+  elements.exportDataButton.addEventListener("click", exportData);
+  elements.importDataButton.addEventListener("click", () => elements.importFileInput.click());
+  elements.importFileInput.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) importData(file);
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -746,6 +759,93 @@ function createMemoryFromLatest() {
   switchTab("memories");
 }
 
+async function handleGenerateReflection() {
+  const texts = state.messages
+    .filter((m) => m.role === "user" && m.content?.trim())
+    .slice(-20)
+    .map((m) => m.content.trim());
+
+  if (texts.length === 0) {
+    alert("先在樹洞留下一些話，餘聲才能整理。");
+    return;
+  }
+
+  elements.generateReflectionButton.disabled = true;
+  elements.generateReflectionButton.textContent = "餘聲正在整理…";
+
+  try {
+    const response = await fetch("/api/reflect", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ texts })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.reflection) throw new Error(data.error || "failed");
+
+    state.echoAi = {
+      primary: data.primary || "心事",
+      reflection: data.reflection,
+      createdAt: new Date().toISOString()
+    };
+    saveState();
+    renderEcho();
+  } catch (err) {
+    alert(err.message?.includes("上限") || err.message?.includes("頻繁")
+      ? err.message
+      : "現在整理不了，稍後再試一次。");
+  } finally {
+    elements.generateReflectionButton.disabled = false;
+    elements.generateReflectionButton.textContent = "讓餘聲整理這週";
+  }
+}
+
+async function exportData() {
+  const attachments = {};
+  for (const [id, dataUrl] of attachmentCache) attachments[id] = dataUrl;
+
+  const payload = {
+    app: "yusheng",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    state,
+    attachments
+  };
+
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `yusheng-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importData(file) {
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    alert("這個檔案無法讀取，請確認是餘聲的備份檔。");
+    return;
+  }
+
+  if (payload?.app !== "yusheng" || !payload.state) {
+    alert("這不是餘聲的備份檔。");
+    return;
+  }
+
+  if (!confirm("匯入會覆蓋目前裝置上的所有資料，確定嗎？")) return;
+
+  state = payload.state;
+  saveState();
+  for (const [id, dataUrl] of Object.entries(payload.attachments || {})) {
+    await saveAttachmentToDb(id, dataUrl);
+  }
+  render();
+  elements.helpPanel.classList.remove("active");
+  alert("匯入完成，你的資料都回來了。");
+}
+
 function switchTab(name) {
   document.querySelectorAll(".screen").forEach((screen) => {
     screen.classList.toggle("active", screen.dataset.screen === name);
@@ -753,6 +853,25 @@ function switchTab(name) {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.tab === name);
   });
+
+  if (name === "capsules") {
+    let changed = false;
+    const now = new Date();
+    for (const capsule of state.capsules) {
+      if (!capsule.seenAt && new Date(capsule.openAt) <= now) {
+        capsule.seenAt = now.toISOString();
+        changed = true;
+      }
+    }
+    if (changed) saveState();
+    updateCapsuleBadge();
+  }
+}
+
+function updateCapsuleBadge() {
+  const now = new Date();
+  const hasUnseen = state.capsules.some((c) => !c.seenAt && new Date(c.openAt) <= now);
+  document.querySelector('.tab[data-tab="capsules"]').classList.toggle("has-badge", hasUnseen);
 }
 
 function render() {
@@ -760,6 +879,7 @@ function render() {
   renderEcho();
   renderCapsules();
   renderMemories();
+  updateCapsuleBadge();
 }
 
 function renderMessages() {
@@ -800,8 +920,13 @@ function renderEcho() {
   }
 
   const mood = detectEchoMood(userMessages);
-  elements.primaryMood.textContent = mood.primary;
-  elements.weeklyReflection.textContent = mood.reflection;
+  if (state.echoAi?.reflection) {
+    elements.primaryMood.textContent = state.echoAi.primary;
+    elements.weeklyReflection.textContent = `${state.echoAi.reflection}（${formatDate(state.echoAi.createdAt)} 由餘聲整理）`;
+  } else {
+    elements.primaryMood.textContent = mood.primary;
+    elements.weeklyReflection.textContent = mood.reflection;
+  }
   elements.moodBars.innerHTML = mood.bars
     .map((bar) => `
       <div class="bar-row">

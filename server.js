@@ -89,6 +89,11 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && requestUrl.pathname === "/api/reflect") {
+    await handleReflect(request, response);
+    return;
+  }
+
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     sendJson(response, 200, {
       ok: true,
@@ -138,6 +143,63 @@ async function handleChat(request, response) {
     sendJson(response, 200, { text });
   } catch (error) {
     sendJson(response, 500, { error: error.message || "Unexpected server error" });
+  }
+}
+
+const reflectionInstructions = `
+你是「餘聲」，一個私密情緒空間裡的 AI 陪伴者。現在你的任務是讀使用者最近留在樹洞裡的話，整理成一段「週回顧」。
+
+要求：
+- 使用繁體中文，口吻溫柔、有人味，像深夜裡可信任的人。
+- 先說你看見的情緒主軸，再溫柔陪伴；不分析、不說教、不給待辦建議。
+- 3 到 5 句，不使用條列。
+- 不診斷疾病，不使用「我理解你的感受」這種制式句。
+- 只回傳 JSON，格式為 {"primary":"兩到三個字的情緒詞","reflection":"週回顧內容"}，不要附加其他文字。
+`.trim();
+
+async function handleReflect(request, response) {
+  try {
+    if (!providerConfig.apiKey) {
+      sendJson(response, 503, { error: `${providerConfig.keyName} is not configured` });
+      return;
+    }
+
+    const rateLimitError = checkRateLimit(getClientIp(request));
+    if (rateLimitError) {
+      sendJson(response, 429, { error: rateLimitError });
+      return;
+    }
+
+    const body = await readJsonBody(request);
+    const texts = (Array.isArray(body.texts) ? body.texts : [])
+      .map((t) => String(t || "").trim())
+      .filter((t) => t.length > 0)
+      .slice(-20);
+
+    if (texts.length === 0) {
+      sendJson(response, 400, { error: "texts is required" });
+      return;
+    }
+
+    const userContent = `以下是使用者最近留在樹洞裡的話，請整理成週回顧：\n${texts.map((t) => `- ${t}`).join("\n")}`;
+    const raw = await callModel(providerConfig, [{ role: "user", content: userContent }], [], reflectionInstructions);
+
+    sendJson(response, 200, parseReflection(raw));
+  } catch (error) {
+    sendJson(response, 500, { error: error.message || "Unexpected server error" });
+  }
+}
+
+function parseReflection(raw) {
+  try {
+    const match = raw.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match[0]);
+    const primary = String(parsed.primary || "").trim().slice(0, 4);
+    const reflection = String(parsed.reflection || "").trim();
+    if (!reflection) throw new Error("empty");
+    return { primary: primary || "心事", reflection };
+  } catch {
+    return { primary: "心事", reflection: String(raw || "").replace(/[{}"\[\]]/g, "").trim() };
   }
 }
 
@@ -201,13 +263,14 @@ function resolveProviderName() {
   return "openai";
 }
 
-async function callModel(config, messages, memories) {
-  if (config.type === "responses") return callResponsesApi(config, messages, memories);
-  if (config.type === "gemini") return callGeminiApi(config, messages, memories);
-  return callChatCompletionsApi(config, messages, memories);
+async function callModel(config, messages, memories, instructions) {
+  const sys = instructions || buildInstructions(memories);
+  if (config.type === "responses") return callResponsesApi(config, messages, sys);
+  if (config.type === "gemini") return callGeminiApi(config, messages, sys);
+  return callChatCompletionsApi(config, messages, sys);
 }
 
-async function callResponsesApi(config, messages, memories) {
+async function callResponsesApi(config, messages, sys) {
   const apiResponse = await fetch(config.url, {
     method: "POST",
     headers: {
@@ -216,7 +279,7 @@ async function callResponsesApi(config, messages, memories) {
     },
     body: JSON.stringify({
       model: config.model,
-      instructions: buildInstructions(memories),
+      instructions: sys,
       input: messages.map((message) => ({
         role: message.role,
         content: message.content
@@ -234,7 +297,7 @@ async function callResponsesApi(config, messages, memories) {
   return extractResponsesText(data);
 }
 
-async function callChatCompletionsApi(config, messages, memories) {
+async function callChatCompletionsApi(config, messages, sys) {
   const apiResponse = await fetch(config.url, {
     method: "POST",
     headers: {
@@ -245,7 +308,7 @@ async function callChatCompletionsApi(config, messages, memories) {
     body: JSON.stringify({
       model: config.model,
       messages: [
-        { role: "system", content: buildInstructions(memories) },
+        { role: "system", content: sys },
         ...messages
       ],
       temperature: 0.82,
@@ -262,7 +325,7 @@ async function callChatCompletionsApi(config, messages, memories) {
     "我在。剛剛那句我沒有接好，你可以再丟一次給我。";
 }
 
-async function callGeminiApi(config, messages, memories) {
+async function callGeminiApi(config, messages, sys) {
   const apiResponse = await fetch(config.url, {
     method: "POST",
     headers: {
@@ -271,7 +334,7 @@ async function callGeminiApi(config, messages, memories) {
     },
     body: JSON.stringify({
       systemInstruction: {
-        parts: [{ text: buildInstructions(memories) }]
+        parts: [{ text: sys }]
       },
       contents: messages.map((message) => ({
         role: message.role === "assistant" ? "model" : "user",

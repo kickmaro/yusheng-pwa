@@ -108,6 +108,7 @@
           <article class="reflection">
             <h3>週回顧</h3>
             <p id="weeklyReflection">留下第一段樹洞對話後，餘聲會從那些話裡整理回聲。</p>
+            <button class="small-button reflection-button" id="generateReflectionButton" type="button">讓餘聲整理這週</button>
           </article>
           <article class="echo-media-panel">
             <h3>留下的照片與聲音</h3>
@@ -171,6 +172,15 @@
                 </div>
                 <span class="help-resource-number">1980</span>
               </a>
+            </div>
+            <div class="help-panel-section">
+              <h3>備份與還原</h3>
+              <p>把所有對話、記憶、照片與錄音打包成一個檔案，換手機時可以帶著走。</p>
+              <div class="help-panel-actions">
+                <button id="exportDataButton" type="button">匯出備份</button>
+                <button id="importDataButton" type="button">匯入備份</button>
+              </div>
+              <input class="hidden-file-input" id="importFileInput" type="file" accept="application/json,.json" />
             </div>
             <div class="help-panel-links">
               <a href="/privacy.html" target="_blank">隱私政策</a>

@@ -911,6 +911,68 @@ textarea:focus {
   font-size: 15px;
 }
 
+/* ─── Reflection button ────────────────────────────────────────────────────── */
+.reflection-button {
+  margin-top: 14px;
+  height: 44px;
+}
+
+.reflection-button:disabled {
+  opacity: 0.6;
+}
+
+/* ─── Capsule badge ────────────────────────────────────────────────────────── */
+.tab {
+  position: relative;
+}
+
+.tab.has-badge::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: calc(50% - 16px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+/* ─── Help panel backup section ────────────────────────────────────────────── */
+.help-panel-section {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 252, 241, 0.5);
+}
+
+.help-panel-section h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.help-panel-section p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.help-panel-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.help-panel-actions button {
+  flex: 1;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--accent-2);
+  background: rgba(255, 252, 241, 0.7);
+  font-size: 14px;
+}
+
 /* ─── Typing indicator ─────────────────────────────────────────────────────── */
 .typing-dots {
   display: flex;
