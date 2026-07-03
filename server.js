@@ -130,7 +130,7 @@ async function handleChat(request, response) {
       return;
     }
 
-    const body = await readJsonBody(request);
+    const body = await readJsonBody(request, 8_000_000);
     const messages = normalizeMessages(body.messages);
     if (messages.length === 0) {
       sendJson(response, 400, { error: "messages is required" });
@@ -138,7 +138,8 @@ async function handleChat(request, response) {
     }
 
     const memories = normalizeMemories(body.memories);
-    const text = await callModel(providerConfig, messages, memories);
+    const attachments = normalizeAttachments(body.attachments);
+    const text = await callModel(providerConfig, messages, memories, undefined, attachments);
 
     sendJson(response, 200, { text });
   } catch (error) {
@@ -263,10 +264,10 @@ function resolveProviderName() {
   return "openai";
 }
 
-async function callModel(config, messages, memories, instructions) {
+async function callModel(config, messages, memories, instructions, attachments) {
   const sys = instructions || buildInstructions(memories);
   if (config.type === "responses") return callResponsesApi(config, messages, sys);
-  if (config.type === "gemini") return callGeminiApi(config, messages, sys);
+  if (config.type === "gemini") return callGeminiApi(config, messages, sys, attachments);
   return callChatCompletionsApi(config, messages, sys);
 }
 
@@ -325,7 +326,7 @@ async function callChatCompletionsApi(config, messages, sys) {
     "我在。剛剛那句我沒有接好，你可以再丟一次給我。";
 }
 
-async function callGeminiApi(config, messages, sys) {
+async function callGeminiApi(config, messages, sys, attachments) {
   const apiResponse = await fetch(config.url, {
     method: "POST",
     headers: {
@@ -336,10 +337,18 @@ async function callGeminiApi(config, messages, sys) {
       systemInstruction: {
         parts: [{ text: sys }]
       },
-      contents: messages.map((message) => ({
-        role: message.role === "assistant" ? "model" : "user",
-        parts: [{ text: message.content }]
-      })),
+      contents: messages.map((message, index) => {
+        const parts = [{ text: message.content }];
+        if (index === messages.length - 1 && message.role !== "assistant" && attachments?.length) {
+          for (const attachment of attachments) {
+            parts.push({ inlineData: { mimeType: attachment.mimeType, data: attachment.data } });
+          }
+        }
+        return {
+          role: message.role === "assistant" ? "model" : "user",
+          parts
+        };
+      }),
       generationConfig: {
         temperature: 0.82,
         maxOutputTokens: 320,
@@ -359,6 +368,15 @@ async function callGeminiApi(config, messages, sys) {
     ?.map((part) => part.text || "")
     .join("")
     .trim() || "我在。剛剛那句我沒有接好，你可以再丟一次給我。";
+}
+
+function normalizeAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .filter((a) => a && typeof a.data === "string" && typeof a.mimeType === "string")
+    .map((a) => ({ mimeType: a.mimeType.split(";")[0].trim(), data: a.data }))
+    .filter((a) => /^(image|audio)\//.test(a.mimeType) && a.data.length > 0 && a.data.length < 6_000_000)
+    .slice(0, 4);
 }
 
 function normalizeMemories(memories) {
@@ -421,12 +439,12 @@ function serveStatic(pathname, response) {
   });
 }
 
-function readJsonBody(request) {
+function readJsonBody(request, limit = 100_000) {
   return new Promise((resolve, reject) => {
     let raw = "";
     request.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 100_000) {
+      if (raw.length > limit) {
         reject(new Error("Request body is too large"));
         request.destroy();
       }

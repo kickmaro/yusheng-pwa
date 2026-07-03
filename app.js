@@ -23,6 +23,8 @@ let state = loadState();
 removeOldSeedData();
 let pendingAttachments = [];
 let isAiTyping = false;
+let lastHiddenAt = 0;
+const LOCK_GRACE_MS = 2 * 60 * 1000;
 let mediaRecorder = null;
 
 // ─── Attachment Store (IndexedDB) ─────────────────────────────────────────────
@@ -221,7 +223,14 @@ function bindEvents() {
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) showLock();
+    if (document.hidden) {
+      lastHiddenAt = Date.now();
+      return;
+    }
+    const wasUnlocked = !elements.mainApp.classList.contains("is-hidden");
+    if (wasUnlocked && lastHiddenAt && Date.now() - lastHiddenAt > LOCK_GRACE_MS) {
+      showLock();
+    }
   });
 }
 
@@ -301,6 +310,7 @@ async function handleMessageSubmit(event) {
   setComposerBusy(true);
 
   const aiContent = buildAiContent(content, attachments);
+  const aiAttachments = buildAiAttachments(attachments);
   state.messages.push({
     id: crypto.randomUUID(),
     role: "user",
@@ -315,7 +325,7 @@ async function handleMessageSubmit(event) {
   renderMessages();
   elements.chatList.scrollTop = elements.chatList.scrollHeight;
 
-  const response = await createAiResponse(aiContent, state.messages);
+  const response = await createAiResponse(aiContent, state.messages, aiAttachments);
   isAiTyping = false;
   state.messages.push({
     id: crypto.randomUUID(),
@@ -330,7 +340,7 @@ async function handleMessageSubmit(event) {
   elements.chatList.scrollTop = elements.chatList.scrollHeight;
 }
 
-async function createAiResponse(content, messages) {
+async function createAiResponse(content, messages, attachments = []) {
   const warmupTimer = setTimeout(() => {
     elements.messageInput.placeholder = "伺服器正在喚醒，請稍候…";
   }, 5000);
@@ -345,7 +355,8 @@ async function createAiResponse(content, messages) {
           role: message.role,
           content: index === recentMessages.length - 1 && message.role === "user" ? content : message.content
         })),
-        memories: state.memories.slice(0, 6).map(m => `[${m.type}] ${m.title}：${m.summary}`)
+        memories: state.memories.slice(0, 6).map(m => `[${m.type}] ${m.title}：${m.summary}`),
+        attachments
       })
     });
 
@@ -369,10 +380,6 @@ async function createAiResponse(content, messages) {
 
 function createLocalResponse(content, messages) {
   const text = content.trim();
-  const previousUserText = [...messages]
-    .reverse()
-    .filter((message) => message.role === "user")
-    .slice(1, 2)[0]?.content || "";
   const latestAiReplies = messages
     .filter((message) => message.role === "ai")
     .slice(-4)
@@ -381,34 +388,9 @@ function createLocalResponse(content, messages) {
   if (isCorrection(text)) {
     return pickFreshReply(
       [
-        "對不起，我剛剛講偏了。你不是想被鼓勵，你只是希望有人懂：那一刻真的很難堪。",
-        "嗯，是我剛剛太快想安慰你了。你不是要振作，你是在說那個畫面讓你很受不了。",
-        "你說得對。這不是要不要變好的問題，是那一幕一直卡在心裡，想到就很想把自己藏起來。",
-        "我懂了。你不是在討拍，也不是在找答案，你只是需要有人說一句：那真的很尷尬，你會在意很正常。"
-      ],
-      latestAiReplies
-    );
-  }
-
-  if (isEmbarrassingTrainingMoment(text)) {
-    return pickFreshReply(
-      [
-        "天啊，那真的會超尷尬。你沒有很怪，是那個情境太難堪了。累到控制不住，旁邊又剛好是教練，誰都會想躲起來。",
-        "我懂你為什麼一直想那個畫面。不是翻滾本身多嚴重，是你在一個想表現正常的地方，突然變得很狼狽。",
-        "這個不是變態，真的不是。比較像是身體累到先投降了，但你的自尊還站在那裡，所以才會那麼尷尬。",
-        "如果我是你，我也會一直回放。那不是你小題大作，是那一刻太赤裸，太像被人看到自己撐不住的樣子。"
-      ],
-      latestAiReplies
-    );
-  }
-
-  if (isCrushConfession(text, previousUserText)) {
-    return pickFreshReply(
-      [
-        "哇，這句有心動到。你不是隨便講講，是那種想到他就會忍不住再說一次「我真的很喜歡」的喜歡吧。",
-        "天啊，這種喜歡很可愛，也很折磨。尤其對方又是教練，會更容易把每個眼神、每句話都放大。",
-        "我懂，喜歡到想講第二次的時候，心裡其實已經藏不住了。你現在不是在亂想，你是真的被他牽動到了。",
-        "這種喜歡會讓人有點亮起來，也會有點慌。你可以先不用壓下去，讓我陪你偷偷開心一下。"
+        "對不起，我剛剛沒有接準。你想說的不是那樣——你可以再多說一點，我重新聽。",
+        "嗯，是我會錯意了。你剛剛真正想讓我懂的，是哪個部分？",
+        "你說得對，我剛剛講偏了。我在，這次我慢慢聽。"
       ],
       latestAiReplies
     );
@@ -417,96 +399,23 @@ function createLocalResponse(content, messages) {
   if (isShortEmotionalReply(text)) {
     return pickFreshReply(
       [
-        "嗯，我在。你不用把話整理好，我先陪你把這口氣喘完。",
+        "嗯，我在。你不用把話整理好，先把這口氣喘完。",
         "真的很不好受吧。先不要急著講清楚，你現在這樣說就已經夠了。",
-        "那一定很悶。你先不用努力變平靜，我就在這裡聽你罵、聽你碎念都可以。",
-        "我懂，現在要你說清楚太累了。你可以只丟一句話，我會接住。"
+        "我懂，現在要你說清楚太累了。你丟一句，我接一句。"
       ],
       latestAiReplies
     );
   }
 
-  if (text.includes("為什麼") || text.includes("怎麼會") || text.includes("憑什麼")) {
-    return pickFreshReply(
-      [
-        "這個「為什麼」聽起來很委屈。你不是在無理取鬧，你是真的覺得那樣對你很不公平。",
-        "嗯，這句話裡有不甘心。你可以先不用客氣，在這裡不用替任何人留面子。",
-        "你心裡那句可能是：怎麼可以這樣對我。老實說，會這樣想很正常。",
-        "你不用急著把氣壓下去。先站在你這邊一下也沒關係，你本來就可以覺得不爽。"
-      ],
-      latestAiReplies
-    );
-  }
-
-  const responseGroups = [
-    {
-      matches: ["喜歡", "心動", "暈船", "在意", "想他", "想她"],
-      replies: [
-        "你講「喜歡」的時候，感覺不是普通欣賞，是那種心裡會偷偷亮一下的喜歡。",
-        "這種心動很難假裝沒有吧。明明想冷靜一點，但只要想到他，就還是會被拉過去。",
-        "我先站在你這邊偷笑一下。喜歡一個人本來就會讓人變得很不淡定，這不丟臉。"
-      ]
-    },
-    {
-      matches: ["出國", "國外", "旅行", "旅遊", "離開", "逃走"],
-      replies: [
-        "想離開一下很正常。你不是沒責任感，你只是太久沒有真正放鬆了，心裡才會一直想往遠一點的地方跑。",
-        "我懂那種想飛走的感覺。不是一定要玩得多開心，是想有幾天不用當那個什麼都要撐住的人。",
-        "如果那個地方讓你想到放鬆，那我反而覺得你很誠實。你只是知道自己需要一點空氣。"
-      ]
-    },
-    {
-      matches: ["按", "按摩", "筋", "肩", "背", "痠", "痛", "身體"],
-      replies: [
-        "想讓身體舒服一點，這沒有什麼好羞愧的。你可能真的繃太久了，身體只是想被好好照顧一下。",
-        "嗯，這很像是身體在跟你求救。你不用罵自己想放鬆，你已經撐很多了。",
-        "如果你現在只想讓身體鬆開一點，那很合理。你不是放縱，你是在替自己找一點活過來的感覺。"
-      ]
-    },
-    {
-      matches: ["睡", "失眠", "醒", "晚上", "深夜", "安靜"],
-      replies: [
-        "晚上最討厭的就是這樣，外面安靜了，腦袋反而開始吵。你不用一個人跟它打，我陪你待一下。",
-        "那種安靜其實一點都不安靜，對吧。你已經很累了，還要被念頭追著跑，真的很煩。",
-        "睡不著不是你不夠放鬆，是心裡有東西還沒被放下來。今晚先不要怪自己。"
-      ]
-    },
-    {
-      matches: ["工作", "主管", "公司", "同事", "加班", "案子", "壓力"],
-      replies: [
-        "你真的撐很久了。工作最消耗人的，不只是事情多，是每天都要裝作自己還扛得住。",
-        "聽起來你忍了一段時間。先不管要怎麼解決，今天至少可以承認：你真的很煩，這不是你的問題。",
-        "如果你在工作裡一直要忍住，那回到這裡就不用再忍得那麼漂亮。想抱怨就抱怨，我站你這邊。"
-      ]
-    },
-    {
-      matches: ["不能說", "秘密", "不敢說", "說不出口", "丟臉"],
-      replies: [
-        "那就先不要說完整。你可以只說一半，我不會逼你把傷口全部攤開。",
-        "有些話說不出口，不是你懦弱，是它真的太靠近心裡了。",
-        "你不用急著坦白什麼。這裡不是審問你，是讓你終於可以不用演得那麼正常。"
-      ]
-    },
-    {
-      matches: ["累", "撐", "煩", "空", "麻木", "厭世"],
-      replies: [
-        "你不是怪，你只是累到有點不像平常的自己了。這種時候先不要罵自己，好嗎。",
-        "如果累到反應都變得很奇怪，那真的會嚇到。可是那不是你壞掉了，是你太久沒有被好好接住。",
-        "你剛剛那個笑，聽起來像是撐到漏氣。不是好笑，是你真的太累了。"
-      ]
-    }
-  ];
-
-  const matchedGroup = responseGroups.find((group) => group.matches.some((keyword) => text.includes(keyword)));
-  const replies = matchedGroup?.replies || [
-    previousUserText
-      ? "我有接到。你不是在亂講，你是在一點一點把心裡卡住的地方拿出來。"
-      : "我在。你不用先把事情說清楚，也不用把自己講得很合理。先丟在這裡就好。",
-    "嗯，我有收到。這句話不用馬上變成答案，它先被好好聽見就夠了。",
-    "慢慢來。你現在說得亂也沒關係，我不會因為你亂就離開。"
-  ];
-
-  return pickFreshReply(replies, latestAiReplies);
+  return pickFreshReply(
+    [
+      "我在。你不用先把事情說清楚，也不用把自己講得很合理，先放在這裡就好。",
+      "嗯，我有收到。這句話不用馬上變成答案，它先被好好聽見就夠了。",
+      "慢慢來。你現在說得亂也沒關係，我不會因為你亂就離開。",
+      "這句話聽起來在心裡放了一陣子了。願意拿出來，已經很不容易。"
+    ],
+    latestAiReplies
+  );
 }
 
 function setComposerBusy(isBusy) {
@@ -672,11 +581,23 @@ function blobToDataUrl(blob) {
 
 function buildAiContent(content, attachments) {
   const notes = attachments.map((attachment) => {
-    if (attachment.type === "image") return "使用者在這則樹洞裡留下了一張照片。你目前不需要解讀照片，只要溫柔承接他願意留下這個片段。";
-    return `使用者在這則樹洞裡留下了一段 ${formatDuration(attachment.duration || 0)} 的錄音。你目前不能聽見內容，只要承接他願意用聲音留下這件事。`;
+    if (attachment.type === "image") return "（使用者在這則樹洞裡附上了一張照片，請看看照片的內容，溫柔地回應他分享的東西。）";
+    return `（使用者附上了一段 ${formatDuration(attachment.duration || 0)} 的錄音，請聽聽他說了什麼，把錄音裡的話當作他對你說的話來回應。）`;
   });
 
   return [content || "我留下了一個沒有文字的片段。", ...notes].join("\n");
+}
+
+function buildAiAttachments(attachments) {
+  return attachments
+    .map((attachment) => {
+      const dataUrl = getAttachmentUrl(attachment.id);
+      if (!dataUrl || !dataUrl.includes(",")) return null;
+      const mimeType = (attachment.mimeType || dataUrl.slice(5, dataUrl.indexOf(";"))).split(";")[0];
+      return { mimeType, data: dataUrl.split(",")[1] };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function formatDuration(seconds) {
@@ -698,13 +619,6 @@ function isShortEmotionalReply(text) {
   );
 }
 
-function isCrushConfession(text, previousUserText) {
-  const hasCrushWord = ["喜歡", "心動", "暈船", "在意", "想他", "想她"].some((keyword) => text.includes(keyword));
-  const continuesCrush = ["真的", "很喜歡", "好喜歡", "超喜歡"].some((keyword) => text.includes(keyword)) &&
-    ["喜歡", "心動", "暈船", "教練"].some((keyword) => previousUserText.includes(keyword));
-  return hasCrushWord || continuesCrush;
-}
-
 function isCorrection(text) {
   return (
     text.includes("沒有想要") ||
@@ -713,14 +627,6 @@ function isCorrection(text) {
     text.includes("聽不懂") ||
     text.includes("不是這樣")
   );
-}
-
-function isEmbarrassingTrainingMoment(text) {
-  const hasTrainingContext = ["教練", "運動", "健身", "訓練"].some((keyword) => text.includes(keyword));
-  const hasEmbarrassingBodyAction = ["躺", "翻滾", "笑", "累到", "狼狽", "丟臉", "尷尬", "變態"].some((keyword) =>
-    text.includes(keyword)
-  );
-  return hasTrainingContext && hasEmbarrassingBodyAction;
 }
 
 function handleCapsuleSubmit(event) {
