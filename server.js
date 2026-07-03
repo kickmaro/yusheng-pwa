@@ -194,7 +194,7 @@ function parseReflection(raw) {
   try {
     const match = raw.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(match[0]);
-    const primary = String(parsed.primary || "").trim().slice(0, 4);
+    const primary = String(parsed.primary || "").trim().split(/[、，,\/\s]/)[0].slice(0, 4);
     const reflection = String(parsed.reflection || "").trim();
     if (!reflection) throw new Error("empty");
     return { primary: primary || "心事", reflection };
