@@ -911,14 +911,64 @@ textarea:focus {
   font-size: 15px;
 }
 
-/* ─── Reflection button ────────────────────────────────────────────────────── */
-.reflection-button {
+/* ─── Reflection buttons ───────────────────────────────────────────────────── */
+.reflection-actions {
+  display: flex;
+  gap: 10px;
   margin-top: 14px;
+}
+
+.reflection-button {
+  flex: 1;
   height: 44px;
+}
+
+.reflection-button.ghost {
+  color: var(--accent-2);
+  background: transparent;
+  border: 1px solid var(--line);
+  box-shadow: none;
 }
 
 .reflection-button:disabled {
   opacity: 0.6;
+}
+
+/* ─── Mood trend panel ─────────────────────────────────────────────────────── */
+.trend-panel {
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(112, 99, 65, 0.09);
+  backdrop-filter: blur(12px);
+}
+
+.trend-panel h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.trend-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.trend-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.trend-empty {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 /* ─── Capsule badge ────────────────────────────────────────────────────────── */
@@ -1049,4 +1099,154 @@ textarea:focus {
     border-radius: 28px;
     overflow: hidden;
   }
+}
+
+/* ─── Dark theme ───────────────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+  --bg: #201d15;
+  --bg-soft: #282418;
+  --surface: rgba(46, 42, 30, 0.72);
+  --surface-2: rgba(52, 47, 33, 0.82);
+  --line: rgba(196, 196, 162, 0.18);
+  --text: #e4dfcd;
+  --muted: #a9a68e;
+  --faint: #83816c;
+  --accent: #7d875f;
+  --accent-2: #9db089;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+html.dark body {
+  background: #171510;
+}
+
+html.dark .app-shell {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(70, 66, 46, 0.5), transparent 34%),
+    linear-gradient(135deg, #232016, #1b1912 54%, #14130d);
+}
+
+html.dark .phone-frame {
+  background:
+    linear-gradient(180deg, rgba(30, 27, 18, 0.9), rgba(26, 23, 15, 0.97)),
+    url("assets/tree-hollow-cover.png") center / cover;
+}
+
+html.dark .lock-screen {
+  background:
+    linear-gradient(90deg, rgba(26, 24, 16, 0.94) 0%, rgba(26, 24, 16, 0.76) 43%, rgba(26, 24, 16, 0.3) 74%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(20, 18, 12, 0.4)),
+    url("assets/tree-hollow-cover.png") center / cover;
+}
+
+html.dark .lock-screen::after {
+  background: radial-gradient(ellipse at center, rgba(60, 56, 38, 0.5), transparent 70%);
+}
+
+html.dark .lock-screen h1 {
+  color: #b4bd8c;
+}
+
+html.dark .lock-screen h1::after {
+  background: rgba(180, 189, 140, 0.55);
+}
+
+html.dark .lock-screen p,
+html.dark .pin-form label {
+  color: #cdc9b4;
+}
+
+html.dark .lock-mark {
+  color: var(--accent-2);
+  background: rgba(46, 42, 30, 0.5);
+}
+
+html.dark .lock-footer a {
+  color: rgba(205, 201, 180, 0.6);
+}
+
+html.dark input,
+html.dark textarea {
+  color: var(--text);
+  background: rgba(40, 37, 26, 0.65);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+html.dark .ghost-button {
+  color: #c3cdae;
+  background: rgba(46, 42, 30, 0.4);
+}
+
+html.dark .top-bar {
+  background: rgba(32, 29, 20, 0.78);
+}
+
+html.dark .icon-button,
+html.dark .send-button {
+  color: var(--text);
+  background: rgba(46, 42, 30, 0.55);
+}
+
+html.dark .send-button {
+  color: #f2efdd;
+  background: var(--accent);
+}
+
+html.dark .hollow-intro p {
+  color: #cfd4b3;
+}
+
+html.dark .message.user {
+  color: #dfe4ca;
+  background: rgba(96, 108, 74, 0.34);
+  border-color: rgba(140, 158, 120, 0.3);
+}
+
+html.dark .message.ai {
+  color: #ddd8c4;
+  background: rgba(44, 40, 28, 0.66);
+}
+
+html.dark .composer {
+  background: rgba(34, 31, 21, 0.82);
+}
+
+html.dark .tool-button {
+  color: #aeb894;
+  background: rgba(46, 42, 30, 0.6);
+  border-color: var(--line);
+}
+
+html.dark .tab-bar {
+  background: rgba(30, 27, 18, 0.85);
+}
+
+html.dark .tab.active {
+  color: #c2cfa8;
+  background: rgba(125, 135, 95, 0.24);
+}
+
+html.dark .mood-panel strong {
+  color: #b7c295;
+}
+
+html.dark .reflection p,
+html.dark .help-panel-desc {
+  color: #c5c1ab;
+}
+
+html.dark .echo-media-item,
+html.dark .audio-attachment,
+html.dark .help-resource,
+html.dark .help-panel-section,
+html.dark .help-panel-actions button,
+html.dark .help-panel-close {
+  background: rgba(44, 40, 28, 0.6);
+}
+
+html.dark .capsule-form button,
+html.dark .pin-form button,
+html.dark .small-button {
+  color: #f2efdd;
 }

@@ -108,7 +108,14 @@
           <article class="reflection">
             <h3>週回顧</h3>
             <p id="weeklyReflection">留下第一段樹洞對話後，餘聲會從那些話裡整理回聲。</p>
-            <button class="small-button reflection-button" id="generateReflectionButton" type="button">讓餘聲整理這週</button>
+            <div class="reflection-actions">
+              <button class="small-button reflection-button" id="generateReflectionButton" type="button">讓餘聲整理這週</button>
+              <button class="small-button reflection-button ghost" id="shareReflectionButton" type="button">存成卡片</button>
+            </div>
+          </article>
+          <article class="trend-panel">
+            <h3>30 天情緒起伏</h3>
+            <div class="trend-chart" id="moodTrend"></div>
           </article>
           <article class="echo-media-panel">
             <h3>留下的照片與聲音</h3>
@@ -172,6 +179,12 @@
                 </div>
                 <span class="help-resource-number">1980</span>
               </a>
+            </div>
+            <div class="help-panel-section">
+              <h3>外觀</h3>
+              <div class="help-panel-actions">
+                <button id="themeToggleButton" type="button">主題：自動</button>
+              </div>
             </div>
             <div class="help-panel-section">
               <h3>備份與還原</h3>

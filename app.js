@@ -25,6 +25,35 @@ let pendingAttachments = [];
 let isAiTyping = false;
 let lastHiddenAt = 0;
 const LOCK_GRACE_MS = 2 * 60 * 1000;
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const themeKey = "yusheng-theme";
+let themeSetting = localStorage.getItem(themeKey) || "auto";
+const darkMedia = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme() {
+  const dark = themeSetting === "dark" || (themeSetting === "auto" && darkMedia.matches);
+  document.documentElement.classList.toggle("dark", dark);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? "#201d15" : "#efe8d7";
+}
+
+darkMedia.addEventListener("change", () => {
+  if (themeSetting === "auto") applyTheme();
+});
+
+function cycleTheme() {
+  themeSetting = themeSetting === "auto" ? "dark" : themeSetting === "dark" ? "light" : "auto";
+  localStorage.setItem(themeKey, themeSetting);
+  applyTheme();
+  updateThemeButtonLabel();
+}
+
+function updateThemeButtonLabel() {
+  const labels = { auto: "主題：自動", dark: "主題：深色", light: "主題：淺色" };
+  elements.themeToggleButton.textContent = labels[themeSetting] || labels.auto;
+}
+// ──────────────────────────────────────────────────────────────────────────────
 let mediaRecorder = null;
 
 // ─── Attachment Store (IndexedDB) ─────────────────────────────────────────────
@@ -159,6 +188,9 @@ const elements = {
   helpPanel: document.querySelector("#helpPanel"),
   helpPanelClose: document.querySelector("#helpPanelClose"),
   generateReflectionButton: document.querySelector("#generateReflectionButton"),
+  shareReflectionButton: document.querySelector("#shareReflectionButton"),
+  moodTrend: document.querySelector("#moodTrend"),
+  themeToggleButton: document.querySelector("#themeToggleButton"),
   exportDataButton: document.querySelector("#exportDataButton"),
   importDataButton: document.querySelector("#importDataButton"),
   importFileInput: document.querySelector("#importFileInput")
@@ -174,6 +206,8 @@ async function init() {
   }).format(new Date());
 
   elements.capsuleDate.min = new Date().toISOString().slice(0, 10);
+  applyTheme();
+  updateThemeButtonLabel();
 
   await Promise.all([loadAllAttachments(), migratePin()]);
   await migrateEmbeddedAttachments();
@@ -214,6 +248,8 @@ function bindEvents() {
   });
 
   elements.generateReflectionButton.addEventListener("click", handleGenerateReflection);
+  elements.shareReflectionButton.addEventListener("click", shareReflectionCard);
+  elements.themeToggleButton.addEventListener("click", cycleTheme);
   elements.exportDataButton.addEventListener("click", exportData);
   elements.importDataButton.addEventListener("click", () => elements.importFileInput.click());
   elements.importFileInput.addEventListener("change", (e) => {
@@ -705,6 +741,150 @@ async function handleGenerateReflection() {
   }
 }
 
+function localDayKey(value) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function renderMoodTrend() {
+  const byDay = new Map();
+  for (const message of state.messages) {
+    if (message.role !== "user" || !message.content?.trim()) continue;
+    const key = localDayKey(message.createdAt);
+    byDay.set(key, (byDay.get(key) || "") + " " + message.content);
+  }
+
+  const heavyWords = ["累", "疲", "撐", "煩", "焦慮", "怕", "不安", "緊張", "擔心", "慌", "失眠", "睡不著", "丟臉", "尷尬", "狼狽", "委屈", "難過", "哭", "痛", "空", "麻木", "厭世", "生氣", "不爽"];
+  const lightWords = ["還好", "平靜", "舒服", "放鬆", "開心", "好一點", "沒事", "謝謝", "喜歡", "期待"];
+
+  const width = 320;
+  const height = 100;
+  const pad = 10;
+  const points = [];
+  for (let i = 29; i >= 0; i--) {
+    const day = new Date();
+    day.setDate(day.getDate() - i);
+    const text = byDay.get(localDayKey(day));
+    let score = null;
+    if (text) {
+      const heavy = heavyWords.reduce((n, w) => n + (text.includes(w) ? 1 : 0), 0);
+      const light = lightWords.reduce((n, w) => n + (text.includes(w) ? 1 : 0), 0);
+      score = Math.max(8, Math.min(96, 30 + heavy * 14 - light * 12));
+    }
+    points.push({ x: pad + (29 - i) * (width - 2 * pad) / 29, score });
+  }
+
+  const active = points.filter((p) => p.score !== null);
+  if (active.length < 2) {
+    elements.moodTrend.innerHTML = `<p class="trend-empty">多留幾天樹洞，這裡會慢慢畫出你的情緒曲線。</p>`;
+    return;
+  }
+
+  const toY = (score) => pad + ((100 - score) / 100) * (height - 2 * pad);
+  const linePath = active.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)},${toY(p.score).toFixed(1)}`).join(" ");
+  const dots = active.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${toY(p.score).toFixed(1)}" r="2.6" fill="var(--accent-2)" />`).join("");
+
+  elements.moodTrend.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="30 天情緒起伏折線圖">
+      <path d="${linePath}" fill="none" stroke="var(--accent-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
+      ${dots}
+    </svg>
+    <div class="trend-axis"><span>30 天前</span><span>越高代表心事越重</span><span>今天</span></div>
+  `;
+}
+
+async function shareReflectionCard() {
+  const echo = state.echoAi;
+  if (!echo?.reflection) {
+    alert("先按「讓餘聲整理這週」，才有卡片可以存。");
+    return;
+  }
+
+  const W = 1080;
+  const H = 1350;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  const serif = '"Songti TC", "Noto Serif TC", serif';
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, H);
+  gradient.addColorStop(0, "#f8f2e4");
+  gradient.addColorStop(1, "#e7ddc4");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "rgba(154, 163, 125, 0.16)";
+  ctx.beginPath();
+  ctx.arc(W - 110, 170, 230, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(111, 132, 106, 0.10)";
+  ctx.beginPath();
+  ctx.arc(130, H - 150, 270, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#6f745d";
+  ctx.font = `34px ${serif}`;
+  ctx.fillText(new Intl.DateTimeFormat("zh-Hant-TW", { year: "numeric", month: "long", day: "numeric" }).format(new Date(echo.createdAt)), 96, 150);
+
+  ctx.fillStyle = "#56623f";
+  ctx.font = `600 116px ${serif}`;
+  ctx.fillText(echo.primary, 96, 315);
+
+  ctx.strokeStyle = "rgba(112, 120, 78, 0.5)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(96, 375);
+  ctx.lineTo(236, 375);
+  ctx.stroke();
+
+  ctx.fillStyle = "#444638";
+  ctx.font = `44px ${serif}`;
+  const lines = wrapCjkText(ctx, echo.reflection, W - 192);
+  lines.slice(0, 12).forEach((line, index) => ctx.fillText(line, 96, 480 + index * 74));
+
+  ctx.fillStyle = "#8a8d74";
+  ctx.font = `36px ${serif}`;
+  ctx.fillText("—— 餘聲", 96, H - 108);
+
+  canvas.toBlob(async (blob) => {
+    if (!blob) return;
+    const file = new File([blob], `yusheng-${localDayKey(new Date())}.png`, { type: "image/png" });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] });
+        return;
+      } catch {}
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
+function wrapCjkText(ctx, text, maxWidth) {
+  const lines = [];
+  let line = "";
+  for (const char of text) {
+    if (char === "\n") {
+      lines.push(line);
+      line = "";
+      continue;
+    }
+    if (ctx.measureText(line + char).width > maxWidth) {
+      lines.push(line);
+      line = char;
+    } else {
+      line += char;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 async function exportData() {
   const attachments = {};
   for (const [id, dataUrl] of attachmentCache) attachments[id] = dataUrl;
@@ -813,6 +993,7 @@ function renderMessages() {
 function renderEcho() {
   const userMessages = state.messages.filter((message) => message.role === "user");
   renderEchoMedia(userMessages);
+  renderMoodTrend();
 
   if (userMessages.length === 0) {
     elements.primaryMood.textContent = "尚未產生";
